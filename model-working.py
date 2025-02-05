@@ -16,7 +16,7 @@ import spacy
 from sentence_transformers import SentenceTransformer
 from langdetect import detect
 from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.decomposition import TruncatedSVD
 
 # Page configuration
 st.set_page_config(page_title="Generalized Text Analysis", layout="wide")
@@ -64,6 +64,11 @@ if uploaded_file is not None:
             return str(entry).strip()
 
         data[selected_column] = data[selected_column].apply(clean_entry)
+
+        # Check minimum document count
+        if len(data) < 2:
+            st.error("Need at least 2 documents for analysis")
+            st.stop()
 
         # Language detection and translation
         st.header("Language Detection and Translation")
@@ -122,18 +127,39 @@ if uploaded_file is not None:
             st.header("Text Clustering")
             tfidf_vectorizer = TfidfVectorizer(stop_words='english')
             tfidf_matrix = tfidf_vectorizer.fit_transform(data[selected_column])
-            kmeans = KMeans(n_clusters=4, random_state=42)
-            data['cluster_kmeans'] = kmeans.fit_predict(tfidf_matrix)
-            agglo = AgglomerativeClustering(n_clusters=4)
-            data['cluster_hierarchical'] = agglo.fit_predict(tfidf_matrix.toarray())
-            gmm = GaussianMixture(n_components=4, random_state=42)
-            data['cluster_gmm'] = gmm.fit_predict(tfidf_matrix.toarray())
-            st.write(data[[selected_column, 'cluster_kmeans', 'cluster_hierarchical', 'cluster_gmm']])
+            
+            # Dynamic cluster handling
+            n_samples = len(data)
+            safe_clusters = min(4, max(1, n_samples-1))  # Default to 4, but adjust for small datasets
+            
+            try:
+                # KMeans
+                kmeans = KMeans(n_clusters=safe_clusters, random_state=42)
+                data['cluster_kmeans'] = kmeans.fit_predict(tfidf_matrix)
+                
+                # Agglomerative Clustering
+                agglo = AgglomerativeClustering(n_clusters=safe_clusters)
+                data['cluster_hierarchical'] = agglo.fit_predict(tfidf_matrix.toarray())
+                
+                # GMM with dimensionality reduction
+                svd = TruncatedSVD(n_components=50)
+                reduced_matrix = svd.fit_transform(tfidf_matrix)
+                gmm = GaussianMixture(n_components=safe_clusters, random_state=42)
+                data['cluster_gmm'] = gmm.fit_predict(reduced_matrix)
+                
+                st.write(data[[selected_column, 'cluster_kmeans', 'cluster_hierarchical', 'cluster_gmm']])
+                
+            except Exception as e:
+                st.error(f"Clustering failed: {str(e)}")
+                st.stop()
 
         with tab5:
             st.header("Cluster Evaluation")
-            silhouette_kmeans = silhouette_score(tfidf_matrix, kmeans.labels_)
-            st.write(f"Silhouette Score for K-Means: {silhouette_kmeans}")
+            if 'cluster_kmeans' in data.columns and len(np.unique(data['cluster_kmeans'])) > 1:
+                silhouette_kmeans = silhouette_score(tfidf_matrix, data['cluster_kmeans'])
+                st.write(f"Silhouette Score for K-Means: {silhouette_kmeans:.2f}")
+            else:
+                st.warning("Not enough clusters to calculate Silhouette Score")
 
         # Download section
         st.sidebar.header("Download Results")
