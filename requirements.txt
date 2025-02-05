@@ -9,6 +9,7 @@ transformers
 openpyxl
 textblob
 scikit-learn
+langdetect
 wordcloud
 sentencepiece
 spacy
