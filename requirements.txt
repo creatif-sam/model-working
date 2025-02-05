@@ -1,0 +1,15 @@
+streamlit
+pandas
+numpy
+matplotlib
+seaborn
+fuzzywuzzy
+torch
+transformers
+openpyxl
+textblob
+scikit-learn
+wordcloud
+sentencepiece
+spacy
+python-Levenshtein
