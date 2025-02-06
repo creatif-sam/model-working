@@ -146,19 +146,19 @@ if uploaded_file is not None:
             try:
                 kmeans = KMeans(n_clusters=safe_clusters, random_state=42)
                 data['cluster_kmeans'] = kmeans.fit_predict(tfidf_matrix)
-                st.write(data[[selected_column, 'cluster_kmeans']])
+                
+                agglo = AgglomerativeClustering(n_clusters=safe_clusters)
+                data['cluster_hierarchical'] = agglo.fit_predict(tfidf_matrix.toarray())
+                
+                svd = TruncatedSVD(n_components=50)
+                reduced_matrix = svd.fit_transform(tfidf_matrix)
+                gmm = GaussianMixture(n_components=safe_clusters, random_state=42)
+                data['cluster_gmm'] = gmm.fit_predict(reduced_matrix)
+                
+                st.write(data[[selected_column, 'cluster_kmeans', 'cluster_hierarchical', 'cluster_gmm']])
+                
             except Exception as e:
                 st.error(f"Clustering failed: {str(e)}")
 
-        # Download section
-        st.sidebar.header("Download Results")
-        if st.sidebar.button("Prepare Download"):
-            output = data.to_csv(index=False).encode('utf-8')
-            st.sidebar.download_button(
-                label="Download Processed Data",
-                data=output,
-                file_name='processed_data.csv',
-                mime='text/csv'
-            )
 else:
     st.info("Please upload a file to begin analysis")
