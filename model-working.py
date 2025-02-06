@@ -65,11 +65,6 @@ if uploaded_file is not None:
 
         data[selected_column] = data[selected_column].apply(clean_entry)
 
-        # Check minimum document count
-        if len(data) < 2:
-            st.error("Need at least 2 documents for analysis")
-            st.stop()
-
         # Language detection and translation
         st.header("Language Detection and Translation")
         data['detected_lang'] = data[selected_column].apply(lambda x: detect(x) if pd.notnull(x) else "unknown")
@@ -77,89 +72,34 @@ if uploaded_file is not None:
         if "fr" in data['detected_lang'].values:
             tokenizer, model = load_translation_model()
             
-            with st.spinner('Translating content...'):
-                data[f'{selected_column}_translated'] = data[selected_column].apply(
-                    lambda x: tokenizer.decode(
-                        model.generate(**tokenizer(x, return_tensors="pt", truncation=True))[0],
+            def translate_text(text):
+                if pd.notnull(text) and detect(text) == "fr":
+                    translated = tokenizer.decode(
+                        model.generate(**tokenizer(text, return_tensors="pt", truncation=True))[0],
                         skip_special_tokens=True
-                    ) if pd.notnull(x) and detect(x) == "fr" else x
-                )
+                    )
+                    return translated
+                return text
+
+            with st.spinner('Translating content...'):
+                data[f'{selected_column}_translated'] = data[selected_column].apply(translate_text)
             st.success("Translation completed!")
 
-        # Display processed data
-        st.subheader("Processed Data Preview")
-        st.dataframe(data.head())
+            # Calculate translation percentage
+            def translation_percentage(original, translated):
+                if pd.notnull(original) and pd.notnull(translated) and detect(original) == "fr":
+                    original_words = len(original.split())
+                    translated_words = len(translated.split())
+                    return min(100, (translated_words / original_words) * 100)
+                return 100
 
-        # Analysis sections
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sentiment Analysis", "Topic Modeling", "Word Cloud", "Clustering", "Cluster Evaluation"])
-
-        with tab1:
-            st.header("Sentiment Analysis")
-            data['sentiment_score'] = data[selected_column].apply(
-                lambda x: TextBlob(str(x)).sentiment.polarity
+            data['translation_percentage'] = data.apply(
+                lambda row: translation_percentage(row[selected_column], row[f'{selected_column}_translated']), axis=1
             )
-            data['sentiment_category'] = data['sentiment_score'].apply(
-                lambda x: 'Positive' if x > 0 else 'Negative' if x < 0 else 'Neutral'
-            )
-            st.write(data[[selected_column, 'sentiment_score', 'sentiment_category']])
 
-        with tab2:
-            st.header("Topic Modeling")
-            vectorizer = CountVectorizer(stop_words='english')
-            dtm = vectorizer.fit_transform(data[selected_column])
-            lda = LatentDirichletAllocation(n_components=3, random_state=42)
-            lda.fit(dtm)
-
-            for idx, topic in enumerate(lda.components_):
-                st.subheader(f"Topic {idx+1}")
-                st.write(", ".join([vectorizer.get_feature_names_out()[i] for i in topic.argsort()[-10:]]))
-
-        with tab3:
-            st.header("Word Cloud")
-            all_text = " ".join(data[selected_column].dropna())
-            wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
-            fig, ax = plt.subplots()
-            ax.imshow(wordcloud, interpolation='bilinear')
-            ax.axis('off')
-            st.pyplot(fig)
-
-        with tab4:
-            st.header("Text Clustering")
-            tfidf_vectorizer = TfidfVectorizer(stop_words='english')
-            tfidf_matrix = tfidf_vectorizer.fit_transform(data[selected_column])
-            
-            # Dynamic cluster handling
-            n_samples = len(data)
-            safe_clusters = min(4, max(1, n_samples-1))  # Default to 4, but adjust for small datasets
-            
-            try:
-                # KMeans
-                kmeans = KMeans(n_clusters=safe_clusters, random_state=42)
-                data['cluster_kmeans'] = kmeans.fit_predict(tfidf_matrix)
-                
-                # Agglomerative Clustering
-                agglo = AgglomerativeClustering(n_clusters=safe_clusters)
-                data['cluster_hierarchical'] = agglo.fit_predict(tfidf_matrix.toarray())
-                
-                # GMM with dimensionality reduction
-                svd = TruncatedSVD(n_components=50)
-                reduced_matrix = svd.fit_transform(tfidf_matrix)
-                gmm = GaussianMixture(n_components=safe_clusters, random_state=42)
-                data['cluster_gmm'] = gmm.fit_predict(reduced_matrix)
-                
-                st.write(data[[selected_column, 'cluster_kmeans', 'cluster_hierarchical', 'cluster_gmm']])
-                
-            except Exception as e:
-                st.error(f"Clustering failed: {str(e)}")
-                st.stop()
-
-        with tab5:
-            st.header("Cluster Evaluation")
-            if 'cluster_kmeans' in data.columns and len(np.unique(data['cluster_kmeans'])) > 1:
-                silhouette_kmeans = silhouette_score(tfidf_matrix, data['cluster_kmeans'])
-                st.write(f"Silhouette Score for K-Means: {silhouette_kmeans:.2f}")
-            else:
-                st.warning("Not enough clusters to calculate Silhouette Score")
+            # Display translation overview
+            st.subheader("Translation Overview")
+            st.dataframe(data[[selected_column, f'{selected_column}_translated', 'translation_percentage']].head())
 
         # Download section
         st.sidebar.header("Download Results")
@@ -171,6 +111,5 @@ if uploaded_file is not None:
                 file_name='processed_data.csv',
                 mime='text/csv'
             )
-
 else:
     st.info("Please upload a file to begin analysis")
