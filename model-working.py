@@ -101,6 +101,55 @@ if uploaded_file is not None:
             st.subheader("Translation Overview")
             st.dataframe(data[[selected_column, f'{selected_column}_translated', 'translation_percentage']].head())
 
+        # Analysis sections
+        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Sentiment Analysis", "Topic Modeling", "Word Cloud", "Clustering", "Cluster Evaluation"])
+
+        with tab1:
+            st.header("Sentiment Analysis")
+            data['sentiment_score'] = data[selected_column].apply(
+                lambda x: TextBlob(str(x)).sentiment.polarity
+            )
+            data['sentiment_category'] = data['sentiment_score'].apply(
+                lambda x: 'Positive' if x > 0 else 'Negative' if x < 0 else 'Neutral'
+            )
+            st.write(data[[selected_column, 'sentiment_score', 'sentiment_category']])
+
+        with tab2:
+            st.header("Topic Modeling")
+            vectorizer = CountVectorizer(stop_words='english')
+            dtm = vectorizer.fit_transform(data[selected_column])
+            lda = LatentDirichletAllocation(n_components=3, random_state=42)
+            lda.fit(dtm)
+
+            for idx, topic in enumerate(lda.components_):
+                st.subheader(f"Topic {idx+1}")
+                st.write(", ".join([vectorizer.get_feature_names_out()[i] for i in topic.argsort()[-10:]]))
+
+        with tab3:
+            st.header("Word Cloud")
+            all_text = " ".join(data[selected_column].dropna())
+            wordcloud = WordCloud(width=800, height=400, background_color='white').generate(all_text)
+            fig, ax = plt.subplots()
+            ax.imshow(wordcloud, interpolation='bilinear')
+            ax.axis('off')
+            st.pyplot(fig)
+
+        with tab4:
+            st.header("Text Clustering")
+            tfidf_vectorizer = TfidfVectorizer(stop_words='english')
+            tfidf_matrix = tfidf_vectorizer.fit_transform(data[selected_column])
+            
+            # Dynamic cluster handling
+            n_samples = len(data)
+            safe_clusters = min(4, max(1, n_samples-1))  # Default to 4, but adjust for small datasets
+            
+            try:
+                kmeans = KMeans(n_clusters=safe_clusters, random_state=42)
+                data['cluster_kmeans'] = kmeans.fit_predict(tfidf_matrix)
+                st.write(data[[selected_column, 'cluster_kmeans']])
+            except Exception as e:
+                st.error(f"Clustering failed: {str(e)}")
+
         # Download section
         st.sidebar.header("Download Results")
         if st.sidebar.button("Prepare Download"):
