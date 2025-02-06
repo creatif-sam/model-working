@@ -19,7 +19,7 @@ from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.decomposition import TruncatedSVD
 
 # Page configuration
-st.set_page_config(page_title="Generalized Text Analysis", layout="wide")
+st.set_page_config(page_title="Trans-Sustain Analysis", layout="wide")
 
 # Load models with caching
 @st.cache_resource
